@@ -1,8 +1,8 @@
 # =================================================================
 # Gemini: GitHub Action for building a standalone uStreamer binary
-# Target: Alpine Linux on armv7
+# V2 - Corrected for ARMv7 cross-compilation
 # =================================================================
-name: 'Build Standalone uStreamer'
+name: 'Build Standalone uStreamer for ARMv7'
 
 on:
   workflow_dispatch:
@@ -14,33 +14,58 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build uStreamer binary for Alpine armv7
+      # Set up QEMU to enable running builds for different architectures
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # Set up Docker Buildx, which is needed for multi-platform builds
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # This step builds the binary inside a container FOR THE CORRECT ARCHITECTURE
+      - name: Build uStreamer inside an ARMv7 container
+        # Use Docker to run commands in a native armv7 container
         run: |
-          echo "Setting up Alpine armv7 build environment..."
-          # 使用Docker来模拟一个干净的Alpine armv7编译环境
-          docker run --rm -v "$(pwd):/work" alpine:3.18 /bin/sh -c '
-            set -e
-            # 更新和安装编译依赖 (根据官方文档)
+          echo "Starting ARMv7 build..."
+          docker run --rm --platform linux/arm/v7 -v "$(pwd):/work" \
+          arm32v7/alpine:3.18 /bin/sh -c '
+            set -ex
+
+            # Verify container architecture to be sure
+            echo "--- Running in container with architecture: ---"
+            uname -m
+            echo "---------------------------------------------"
+
+            # Install build dependencies for armv7
+            echo "Installing dependencies inside ARMv7 container..."
             apk update
             apk add build-base git make libevent-dev libbsd-dev libjpeg-turbo-dev musl-dev
-            
-            # 克隆 uStreamer 源代码
+
+            # Clone uStreamer source code
             echo "Cloning uStreamer source code..."
             cd /tmp
             git clone --depth=1 https://github.com/pikvm/ustreamer
             cd ustreamer
-            
-            # 编译 (根据官方文档，针对Alpine需要添加额外参数)
-            echo "Compiling uStreamer..."
+
+            # Compile with flags for Alpine
+            echo "Compiling uStreamer for ARMv7..."
             make WITH_PTHREAD_NP=0
-            
-            # 将编译好的文件复制到工作目录以便上传
+
+            # Copy the final binary to the output directory
             echo "Copying binary to workspace..."
-            cp ./ustreamer /work/ustreamer-armv7-musl
+            cp ./ustreamer /work/ustreamer-final-binary
           '
-          
-      - name: Upload uStreamer binary
+
+      # Verify the output file type as a final check
+      - name: Verify compiled binary architecture
+        run: |
+          echo "--- Verifying file type of the output binary: ---"
+          file ustreamer-final-binary
+          echo "-------------------------------------------------"
+
+      # Upload the final, correct artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ustreamer-binary
-          path: ustreamer-armv7-musl
+          name: ustreamer-armv7-musl-binary
+          path: ustreamer-final-binary

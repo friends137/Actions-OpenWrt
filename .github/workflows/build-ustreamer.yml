@@ -39,7 +39,7 @@ jobs:
             # Install build dependencies for armv7
             echo "Installing dependencies inside ARMv7 container..."
             apk update
-            apk add build-base git make libevent-dev libbsd-dev libjpeg-turbo-dev musl-dev
+            apk add build-base git make libevent-dev libevent-static libbsd-dev libbsd-static libjpeg-turbo-dev libjpeg-turbo-static musl-dev
 
             # Clone uStreamer source code
             echo "Cloning uStreamer source code..."

@@ -49,7 +49,7 @@ jobs:
 
             # Compile with flags for Alpine
             echo "Compiling uStreamer for ARMv7..."
-            make WITH_PTHREAD_NP=0
+            make LDFLAGS=-static WITH_PTHREAD_NP=0
 
             # Copy the final binary to the output directory
             echo "Copying binary to workspace..."

@@ -1,0 +1,46 @@
+# =================================================================
+# Gemini: GitHub Action for building a standalone uStreamer binary
+# Target: Alpine Linux on armv7
+# =================================================================
+name: 'Build Standalone uStreamer'
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build uStreamer binary for Alpine armv7
+        run: |
+          echo "Setting up Alpine armv7 build environment..."
+          # 使用Docker来模拟一个干净的Alpine armv7编译环境
+          docker run --rm -v "$(pwd):/work" alpine:3.18 /bin/sh -c '
+            set -e
+            # 更新和安装编译依赖 (根据官方文档)
+            apk update
+            apk add build-base git make libevent-dev libbsd-dev libjpeg-turbo-dev musl-dev
+            
+            # 克隆 uStreamer 源代码
+            echo "Cloning uStreamer source code..."
+            cd /tmp
+            git clone --depth=1 https://github.com/pikvm/ustreamer
+            cd ustreamer
+            
+            # 编译 (根据官方文档，针对Alpine需要添加额外参数)
+            echo "Compiling uStreamer..."
+            make WITH_PTHREAD_NP=0
+            
+            # 将编译好的文件复制到工作目录以便上传
+            echo "Copying binary to workspace..."
+            cp ./ustreamer /work/ustreamer-armv7-musl
+          '
+          
+      - name: Upload uStreamer binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ustreamer-binary
+          path: ustreamer-armv7-musl

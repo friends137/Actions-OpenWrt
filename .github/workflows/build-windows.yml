@@ -18,17 +18,32 @@ jobs:
         repository: xmrig/xmrig
         path: xmrig-src
 
+    # 1. 自动从源码提取官方版本号
+    - name: Get XMRig Version
+      shell: pwsh
+      run: |
+        $versionFile = "xmrig-src/src/version.h"
+        $match = Select-String -Path $versionFile -Pattern 'APP_VERSION\s+"([^"]+)"' | Select-Object -First 1
+        $version = $match.Matches.Groups[1].Value
+        
+        if (-not $version) {
+            Write-Error "Failed to extract version from $versionFile"
+            exit 1
+        }
+        Write-Host "Extracted XMRig Version: $version"
+        # 将版本号写入环境变量，供后续步骤使用
+        echo "VERSION=$version" >> $env:GITHUB_ENV
+
+    # 2. 使用整行替换，确保 100% 修改成功
     - name: Modify donate level to 0%
       shell: pwsh
       run: |
         $donateFile = "xmrig-src/src/donate.h"
         Write-Host "Modifying donate level to 0% in $donateFile"
         
-        # Replace kDefaultDonateLevel = 1 with 0
-        (Get-Content $donateFile) -replace 'constexpr\s+const\s+int\s+kDefaultDonateLevel\s*=\s*1', 'constexpr const int kDefaultDonateLevel = 0' | Set-Content $donateFile
-        
-        # Replace kMinimumDonateLevel = 1 with 0
-        (Get-Content $donateFile) -replace 'constexpr\s+const\s+int\s+kMinimumDonateLevel\s*=\s*1', 'constexpr const int kMinimumDonateLevel = 0' | Set-Content $donateFile
+        # 使用 .* 匹配整行，无论原代码格式如何，都强制替换为 0
+        (Get-Content $donateFile) -replace '.*kDefaultDonateLevel.*', 'constexpr const int kDefaultDonateLevel = 0;' | Set-Content $donateFile
+        (Get-Content $donateFile) -replace '.*kMinimumDonateLevel.*', 'constexpr const int kMinimumDonateLevel = 0;' | Set-Content $donateFile
         
         Write-Host "=== Modified donate.h ==="
         Get-Content $donateFile | Select-String "DonateLevel"
@@ -37,7 +52,6 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "Cloning xmrig-deps repository..."
-        # 直接克隆整个仓库，里面包含了预编译好的 msvc2022/x64 依赖库
         git clone https://github.com/xmrig/xmrig-deps.git c:\xmrig-deps
         
         Write-Host "Directory structure:"
@@ -56,17 +70,25 @@ jobs:
         cd xmrig-src/build
         cmake --build . --config Release
 
+    # 3. 将编译好的文件重命名为带版本号的名称
+    - name: Rename executable with version
+      shell: pwsh
+      run: |
+        Copy-Item "xmrig-src/build/Release/xmrig.exe" "xmrig-${{ env.VERSION }}.exe"
+        Write-Host "Renamed to xmrig-${{ env.VERSION }}.exe"
+
+    # 4. 上传 artifact，压缩包名和内部文件名都包含版本号
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: xmrig-windows-x64-0fee
-        path: xmrig-src/build/Release/xmrig.exe
+        name: xmrig-${{ env.VERSION }}-windows-x64-0fee
+        path: xmrig-${{ env.VERSION }}.exe
         retention-days: 30
 
     - name: Create Release (on tag)
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v2
       with:
-        files: xmrig-src/build/Release/xmrig.exe
+        files: xmrig-${{ env.VERSION }}.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,75 @@
+name: Build XMRig Windows (0% Fee)
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    
+    steps:
+    - name: Checkout XMRig source code
+      uses: actions/checkout@v4
+      with:
+        repository: xmrig/xmrig
+        path: xmrig-src
+
+    - name: Modify donate level to 0%
+      shell: pwsh
+      run: |
+        $donateFile = "xmrig-src/src/donate.h"
+        Write-Host "Modifying donate level to 0% in $donateFile"
+        
+        # Replace kDefaultDonateLevel = 1 with 0
+        (Get-Content $donateFile) -replace 'constexpr\s+const\s+int\s+kDefaultDonateLevel\s*=\s*1', 'constexpr const int kDefaultDonateLevel = 0' | Set-Content $donateFile
+        
+        # Replace kMinimumDonateLevel = 1 with 0
+        (Get-Content $donateFile) -replace 'constexpr\s+const\s+int\s+kMinimumDonateLevel\s*=\s*1', 'constexpr const int kMinimumDonateLevel = 0' | Set-Content $donateFile
+        
+        Write-Host "=== Modified donate.h ==="
+        Get-Content $donateFile | Select-String "DonateLevel"
+
+    - name: Download xmrig-deps (prebuilt dependencies)
+      shell: pwsh
+      run: |
+        Write-Host "Downloading xmrig-deps..."
+        $depsUrl = "https://github.com/xmrig/xmrig-deps/releases/download/4.1/xmrig-deps-msvc2022-x64.zip"
+        Invoke-WebRequest -Uri $depsUrl -OutFile "xmrig-deps.zip"
+        
+        Write-Host "Extracting dependencies..."
+        Expand-Archive -Path "xmrig-deps.zip" -DestinationPath "c:\xmrig-deps" -Force
+        
+        Write-Host "Directory structure:"
+        Get-ChildItem -Path "c:\xmrig-deps" -Recurse -Depth 2
+
+    - name: Configure CMake
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path "xmrig-src/build" -Force
+        cd xmrig-src/build
+        cmake .. -G "Visual Studio 17 2022" -A x64 -DXMRIG_DEPS="c:\xmrig-deps\msvc2022\x64"
+
+    - name: Build Release
+      shell: pwsh
+      run: |
+        cd xmrig-src/build
+        cmake --build . --config Release
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: xmrig-windows-x64-0fee
+        path: xmrig-src/build/Release/xmrig.exe
+        retention-days: 30
+
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: xmrig-src/build/Release/xmrig.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
